@@ -112,7 +112,6 @@ static int ble_scan(gattlib_adapter_t* adapter, int device_desc, gattlib_discove
 	socklen_t slen = sizeof(old_options);
 	struct hci_filter new_options;
 	unsigned char buffer[HCI_MAX_EVENT_SIZE];
-	evt_le_meta_event* meta = (evt_le_meta_event*)(buffer + HCI_EVENT_HDR_SIZE + 1);
 	le_advertising_info* info;
 	char addr[18];
 	int len;
@@ -130,8 +129,7 @@ static int ble_scan(gattlib_adapter_t* adapter, int device_desc, gattlib_discove
 	hci_filter_set_ptype(HCI_EVENT_PKT, &new_options);
 	hci_filter_set_event(EVT_LE_META_EVENT, &new_options);
 
-	if (setsockopt(device_desc, SOL_HCI, HCI_FILTER,
-				   &new_options, sizeof(new_options)) < 0) {
+	if (setsockopt(device_desc, SOL_HCI, HCI_FILTER, &new_options, sizeof(new_options)) < 0) {
 		fprintf(stderr, "ERROR: Could not set socket options.\n");
 		return 1;
 	}
@@ -140,13 +138,13 @@ static int ble_scan(gattlib_adapter_t* adapter, int device_desc, gattlib_discove
 	wait.tv_sec = timeout;
 	int ts = time(NULL);
 
-	while(1) {
+	while (1) {
 		FD_ZERO(&read_set);
 		FD_SET(device_desc, &read_set);
 
-		int err = select(FD_SETSIZE, &read_set, NULL, NULL, &wait);
+		int err = select(device_desc + 1, &read_set, NULL, NULL, &wait);
 		if (err <= 0) {
-			break;
+			break; // Timeout or error
 		}
 
 		len = read(device_desc, buffer, sizeof(buffer));
@@ -155,10 +153,16 @@ static int ble_scan(gattlib_adapter_t* adapter, int device_desc, gattlib_discove
 			break;
 		}
 
-		if (meta->subevent != 0x02 || (uint8_t)buffer[BLE_EVENT_TYPE] != BLE_SCAN_RESPONSE)
-			continue;
+		if (len < HCI_EVENT_HDR_SIZE + 1) {
+			continue; // Not enough data
+		}
 
-		info = (le_advertising_info*) (meta->data + 1);
+		evt_le_meta_event* meta = (evt_le_meta_event*)(buffer + HCI_EVENT_HDR_SIZE);
+		if (meta->subevent != 0x02 || (uint8_t)buffer[BLE_EVENT_TYPE] != BLE_SCAN_RESPONSE) {
+			continue; // Not the event we're looking for
+		}
+
+		info = (le_advertising_info*)(meta->data + 1);
 		ba2str(&info->bdaddr, addr);
 
 		char* name = parse_name(info->data, info->length);
@@ -178,14 +182,16 @@ static int ble_scan(gattlib_adapter_t* adapter, int device_desc, gattlib_discove
 #else
 	while (1) {
 		struct pollfd fds;
-		fds.fd     = device_desc;
+		fds.fd = device_desc;
 		fds.events = POLLIN;
 
 		int err = poll(&fds, 1, timeout * 1000);
 		if (err <= 0) {
-			break;
-		} else if ((fds.revents & POLLIN) == 0) {
-			continue;
+			break; // Timeout or error
+		}
+
+		if ((fds.revents & POLLIN) == 0) {
+			continue; // No data to read
 		}
 
 		len = read(device_desc, buffer, sizeof(buffer));
@@ -194,10 +200,16 @@ static int ble_scan(gattlib_adapter_t* adapter, int device_desc, gattlib_discove
 			break;
 		}
 
-		if (meta->subevent != 0x02 || (uint8_t)buffer[BLE_EVENT_TYPE] != BLE_SCAN_RESPONSE)
-			continue;
+		if (len < HCI_EVENT_HDR_SIZE + 1) {
+			continue; // Not enough data
+		}
 
-		info = (le_advertising_info*) (meta->data + 1);
+		evt_le_meta_event* meta = (evt_le_meta_event*)(buffer + HCI_EVENT_HDR_SIZE);
+		if (meta->subevent != 0x02 || (uint8_t)buffer[BLE_EVENT_TYPE] != BLE_SCAN_RESPONSE) {
+			continue; // Not the event we're looking for
+		}
+
+		info = (le_advertising_info*)(meta->data + 1);
 		ba2str(&info->bdaddr, addr);
 
 		char* name = parse_name(info->data, info->length);
@@ -208,7 +220,12 @@ static int ble_scan(gattlib_adapter_t* adapter, int device_desc, gattlib_discove
 	}
 #endif
 
-	setsockopt(device_desc, SOL_HCI, HCI_FILTER, &old_options, sizeof(old_options));
+	// Reset the socket options
+	if (setsockopt(device_desc, SOL_HCI, HCI_FILTER, &old_options, sizeof(old_options)) < 0) {
+		fprintf(stderr, "ERROR: Could not reset socket options.\n");
+		return 1;
+	}
+
 	return GATTLIB_SUCCESS;
 }
 
