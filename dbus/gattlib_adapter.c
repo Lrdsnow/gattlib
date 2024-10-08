@@ -397,6 +397,9 @@ static int _gattlib_adapter_scan_enable_with_filter(gattlib_adapter_t* adapter, 
 	GVariant *rssi_variant = NULL;
 	int ret;
 
+	setvbuf(stdout, NULL, _IONBF, 0);
+	printf("starting scan...\n");
+
 	if ((adapter == NULL) || (adapter->backend.adapter_proxy == NULL)) {
 		GATTLIB_LOG(GATTLIB_ERROR, "Could not start BLE scan. No opened bluetooth adapter");
 		return GATTLIB_NO_ADAPTER;
@@ -431,6 +434,8 @@ static int _gattlib_adapter_scan_enable_with_filter(gattlib_adapter_t* adapter, 
 		g_variant_builder_add(&arg_properties_builder, "{sv}", "RSSI", rssi_variant);
 	}
 
+	printf("setting discovery...\n");
+
 	org_bluez_adapter1_call_set_discovery_filter_sync(adapter->backend.adapter_proxy,
 			g_variant_builder_end(&arg_properties_builder), NULL, &error);
 
@@ -445,6 +450,8 @@ static int _gattlib_adapter_scan_enable_with_filter(gattlib_adapter_t* adapter, 
 		g_error_free(error);
 		return ret;
 	}
+
+	printf("notif stuff...\n");
 
 	//
 	// Get notification when objects are removed from the Bluez ObjectManager.
@@ -461,6 +468,8 @@ static int _gattlib_adapter_scan_enable_with_filter(gattlib_adapter_t* adapter, 
 		}
 		return ret;
 	}
+
+	printf("cleaning scan structure...\n");
 
 	// Clear BLE scan structure
 	memset(&adapter->backend.ble_scan, 0, sizeof(adapter->backend.ble_scan));
@@ -485,6 +494,8 @@ static int _gattlib_adapter_scan_enable_with_filter(gattlib_adapter_t* adapter, 
 					     G_CALLBACK(on_interface_proxy_properties_changed),
 					     adapter);
 
+	printf("nowww for the scanning...\n");
+
 	// Now, start BLE discovery
 	org_bluez_adapter1_call_start_discovery_sync(adapter->backend.adapter_proxy, NULL, &error);
 	if (error) {
@@ -493,6 +504,8 @@ static int _gattlib_adapter_scan_enable_with_filter(gattlib_adapter_t* adapter, 
 		g_error_free(error);
 		return ret;
 	}
+
+	printf("the actual return!\n");
 
 	GATTLIB_LOG(GATTLIB_DEBUG, "Bluetooth scan started");
 	return GATTLIB_SUCCESS;
@@ -520,6 +533,9 @@ int gattlib_adapter_scan_enable_with_filter(gattlib_adapter_t* adapter, uuid_t *
 
 	adapter->backend.ble_scan.is_scanning = true;
 
+	printf("scan thread\n");
+
+	// Ensure the scan thread is created safely
 	adapter->backend.ble_scan.scan_loop_thread = g_thread_try_new("gattlib_ble_scan", _ble_scan_loop_thread, adapter, &error);
 	if (adapter->backend.ble_scan.scan_loop_thread == NULL) {
 		GATTLIB_LOG(GATTLIB_ERROR, "Failed to create BLE scan thread: %s", error->message);
@@ -528,33 +544,33 @@ int gattlib_adapter_scan_enable_with_filter(gattlib_adapter_t* adapter, uuid_t *
 		goto EXIT;
 	}
 
-	// We need to release the mutex to ensure we leave the other thread to signal us
-	g_rec_mutex_unlock(&m_gattlib_mutex);
+	printf("unlock\n");
 
-	g_mutex_lock(&m_gattlib_signal.mutex);
-	while (gattlib_adapter_is_scanning(adapter)) {
-		g_cond_wait(&m_gattlib_signal.condition, &m_gattlib_signal.mutex);
-	}
-	g_mutex_unlock(&m_gattlib_signal.mutex);
-
-	// Get the mutex again
-	g_rec_mutex_lock(&m_gattlib_mutex);
-
-	// Ensure the adapter is still valid when we get the mutex again
-	if (!gattlib_adapter_is_valid(adapter)) {
-		GATTLIB_LOG(GATTLIB_ERROR, "gattlib_adapter_scan_enable_with_filter: Adapter not valid (2)");
-		ret = GATTLIB_ADAPTER_CLOSE;
+	adapter->backend.ble_scan.scan_loop_thread = g_thread_try_new("gattlib_ble_scan", _ble_scan_loop_thread, adapter, &error);
+	if (adapter->backend.ble_scan.scan_loop_thread == NULL) {
+		GATTLIB_LOG(GATTLIB_ERROR, "Failed to create BLE scan thread: %s", error->message);
+		g_error_free(error);
+		ret = GATTLIB_ERROR_INTERNAL;
 		goto EXIT;
 	}
 
-	// Free thread
-	g_thread_unref(adapter->backend.ble_scan.scan_loop_thread);
-	adapter->backend.ble_scan.scan_loop_thread = NULL;
+	adapter->backend.ble_scan.scan_loop_thread = g_thread_try_new("gattlib_ble_scan", _ble_scan_loop_thread, adapter, &error);
+	if (adapter->backend.ble_scan.scan_loop_thread == NULL) {
+		GATTLIB_LOG(GATTLIB_ERROR, "Failed to create BLE scan thread: %s", error->message);
+		g_error_free(error);
+		ret = GATTLIB_ERROR_INTERNAL;
+		goto EXIT;
+	}
 
 EXIT:
-	g_rec_mutex_unlock(&m_gattlib_mutex);
+	// Ensure the mutex is unlocked if an error occurs before unlocking
+	if (g_rec_mutex_trylock(&m_gattlib_mutex)) {
+		g_rec_mutex_unlock(&m_gattlib_mutex);
+	}
+
 	return ret;
 }
+
 
 int gattlib_adapter_scan_enable_with_filter_non_blocking(gattlib_adapter_t* adapter, uuid_t **uuid_list, int16_t rssi_threshold, uint32_t enabled_filters,
 		gattlib_discovered_device_t discovered_device_cb, size_t timeout, void *user_data)
