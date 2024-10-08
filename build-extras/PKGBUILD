@@ -1,0 +1,24 @@
+# Maintainer: lrdsnow
+# Contributor: lrdsnow & labapart
+pkgname=gattlib
+pkgver=0.7.2
+pkgrel=1
+pkgdesc="Library to access GATT information from Bluetooth Low Energy (BLE) devices."
+arch=('i686' 'x86_64')
+url="https://github.com/Lrdsnow/gattlib"
+license=('GPL' 'BSD-3-Clause')
+depends=('bluez-utils>=5.40' 'glib2')
+options=('!strip' '!emptydirs')
+source=()
+
+package(){
+
+	cd "$startdir"
+
+	mkdir gattlib_temp
+	unzip gattlib_0.4-dev_x86_64.zip -d gattlib_temp
+	mkdir -p "${pkgdir}/usr"
+	cp -r gattlib_temp/*/* "${pkgdir}/usr"
+	rm -rf gattlib_temp
+
+}

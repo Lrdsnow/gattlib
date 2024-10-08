@@ -147,13 +147,13 @@ set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Library to access GATT information from B
 set(CPACK_PACKAGE_FILE_NAME "${CMAKE_PROJECT_NAME}_${CPACK_PACKAGE_VERSION}_${CPACK_PACKAGE_ARCHITECTURE}")
 
 #
-# Debian, RPM and ZIP packages
+# Debian and ZIP packages
 #
 if (CMAKE_SYSROOT)
   # CPack does like RPM package in a cross-toolchain context
   set(CPACK_GENERATOR "DEB;ZIP")
 else()
-  set(CPACK_GENERATOR "DEB;RPM;ZIP")
+  set(CPACK_GENERATOR "DEB;ZIP")
 endif()
 
 if (NOT CMAKE_SYSROOT)

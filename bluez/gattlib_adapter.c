@@ -236,19 +236,22 @@ int gattlib_adapter_scan_enable(gattlib_adapter_t* adapter, gattlib_discovered_d
 	uint16_t window = htobs(DISCOV_LE_SCAN_WIN);
 	uint8_t own_address_type = 0x00;
 	uint8_t filter_policy = 0x00;
-
+	
+	printf("GATTLIB: setting scan params...\n");
 	int ret = hci_le_set_scan_parameters(device_desc, LE_SCAN_ACTIVE, interval, window, own_address_type, filter_policy, 10000);
 	if (ret < 0) {
 		fprintf(stderr, "ERROR: Set scan parameters failed (are you root?).\n");
 		return 1;
 	}
 
+	printf("GATTLIB: enabling scan...\n");
 	ret = hci_le_set_scan_enable(device_desc, 0x01, 1, 10000);
 	if (ret < 0) {
 		fprintf(stderr, "ERROR: Enable scan failed.\n");
 		return 1;
 	}
 
+	printf("GATTLIB: scanning...\n");
 	ret = ble_scan(adapter, device_desc, discovered_device_cb, timeout, user_data);
 	if (ret != 0) {
 		fprintf(stderr, "ERROR: Advertisement fail.\n");
